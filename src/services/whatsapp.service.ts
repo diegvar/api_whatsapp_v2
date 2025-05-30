@@ -90,7 +90,13 @@ export class WhatsAppService {
             return {
                 status: 200,
                 message: 'El mensaje se ha enviado con éxito',
-                data: response
+                data: {
+                    id: response.id._serialized,
+                    timestamp: response.timestamp,
+                    from: response.from,
+                    to: response.to,
+                    body: response.body
+                }
             };
         } catch (error) {
             console.error('Error al enviar mensaje:', error);
