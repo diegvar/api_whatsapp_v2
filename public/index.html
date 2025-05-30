@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Web QR</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #128C7E;
+        }
+        #qr-container {
+            margin: 20px 0;
+        }
+        #qr-image {
+            max-width: 300px;
+            height: auto;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .waiting {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WhatsApp Web QR</h1>
+        <div id="qr-container">
+            <img id="qr-image" src="/qr.png" alt="Código QR" style="display: none;">
+        </div>
+        <div id="status" class="status waiting">
+            Esperando código QR...
+        </div>
+    </div>
+
+    <script>
+        function checkQR() {
+            fetch('/api/qr-status')
+                .then(response => response.json())
+                .then(data => {
+                    const qrImage = document.getElementById('qr-image');
+                    const status = document.getElementById('status');
+                    
+                    if (data.hasQR) {
+                        qrImage.style.display = 'block';
+                        status.textContent = 'Escanea el código QR con WhatsApp';
+                        status.className = 'status waiting';
+                    } else {
+                        qrImage.style.display = 'none';
+                        status.textContent = 'WhatsApp Web conectado';
+                        status.className = 'status connected';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+        // Verificar el estado cada 2 segundos
+        setInterval(checkQR, 2000);
+        // Verificar inmediatamente al cargar la página
+        checkQR();
+    </script>
+</body>
+</html> 
