@@ -2,10 +2,12 @@
   "name": "api_whatsapp_v2",
   "version": "1.0.0",
   "description": "API para enviar mensajes de WhatsApp usando whatsapp-web.js",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "watch": "tsc -w"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -15,6 +17,12 @@
     "dotenv": "^16.3.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.5",
+    "@types/qrcode": "^1.5.5",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3"
   }
 } 

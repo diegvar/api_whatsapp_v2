@@ -13,8 +13,14 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Asegurarse de que el directorio public existe
+const publicDir = path.join(__dirname, '../public');
+if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+}
+
 // Servir archivos estáticos desde la carpeta public
-app.use(express.static('public'));
+app.use(express.static(publicDir));
 
 // Inicializar el cliente de WhatsApp
 const client = new Client({
@@ -27,18 +33,25 @@ const client = new Client({
 // Evento cuando el cliente está listo
 client.on('qr', async (qr) => {
     try {
+        console.log('Generando nuevo código QR...');
+        
         // Generar el QR como imagen
         const qrImage = await qrcode.toDataURL(qr);
         const base64Data = qrImage.replace(/^data:image\/png;base64,/, '');
         
-        // Asegurarse de que el directorio existe
-        if (!fs.existsSync('public')) {
-            fs.mkdirSync('public');
-        }
+        // Ruta completa del archivo QR
+        const qrPath = path.join(publicDir, 'qr.png');
         
         // Guardar la imagen
-        fs.writeFileSync('public/qr.png', base64Data, 'base64');
-        console.log('Nuevo código QR generado y guardado en public/qr.png');
+        fs.writeFileSync(qrPath, base64Data, 'base64');
+        console.log('Código QR generado y guardado en:', qrPath);
+        
+        // Verificar que el archivo existe
+        if (fs.existsSync(qrPath)) {
+            console.log('Archivo QR verificado correctamente');
+        } else {
+            console.error('Error: El archivo QR no se creó correctamente');
+        }
     } catch (error) {
         console.error('Error al generar el código QR:', error);
     }
@@ -47,16 +60,20 @@ client.on('qr', async (qr) => {
 client.on('ready', () => {
     console.log('Cliente WhatsApp está listo!');
     // Eliminar el archivo QR cuando el cliente está listo
-    if (fs.existsSync('public/qr.png')) {
-        fs.unlinkSync('public/qr.png');
+    const qrPath = path.join(publicDir, 'qr.png');
+    if (fs.existsSync(qrPath)) {
+        fs.unlinkSync(qrPath);
+        console.log('Archivo QR eliminado después de la autenticación');
     }
 });
 
 client.on('authenticated', () => {
     console.log('Cliente autenticado!');
     // Eliminar el archivo QR cuando el cliente está autenticado
-    if (fs.existsSync('public/qr.png')) {
-        fs.unlinkSync('public/qr.png');
+    const qrPath = path.join(publicDir, 'qr.png');
+    if (fs.existsSync(qrPath)) {
+        fs.unlinkSync(qrPath);
+        console.log('Archivo QR eliminado después de la autenticación');
     }
 });
 
@@ -135,7 +152,8 @@ app.get('/api/status', verifyToken, (req, res) => {
 
 // Ruta para verificar si hay un código QR disponible
 app.get('/api/qr-status', verifyToken, (req, res) => {
-    const qrExists = fs.existsSync('public/qr.png');
+    const qrPath = path.join(publicDir, 'qr.png');
+    const qrExists = fs.existsSync(qrPath);
     res.json({
         status: 200,
         success: true,
