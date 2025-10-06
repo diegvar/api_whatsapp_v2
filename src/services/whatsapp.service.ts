@@ -41,8 +41,7 @@ export class WhatsAppService {
                     '--disable-renderer-backgrounding'
                 ],
                 headless: true,
-                timeout: 120000,
-                protocolTimeout: 120000
+                timeout: 120000
             },
             webVersionCache: {
                 type: 'remote',
