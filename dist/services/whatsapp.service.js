@@ -51,7 +51,9 @@ class WhatsAppService {
     }
     initializeClient() {
         this.client = new whatsapp_web_js_1.Client({
-            authStrategy: new whatsapp_web_js_1.LocalAuth(),
+            authStrategy: new whatsapp_web_js_1.LocalAuth({
+                clientId: "whatsapp-client"
+            }),
             puppeteer: {
                 args: [
                     '--no-sandbox',
@@ -62,18 +64,23 @@ class WhatsAppService {
                     '--no-zygote',
                     '--disable-gpu',
                     '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding'
                 ],
                 headless: true,
-                timeout: 60000
+                timeout: 120000
             },
             webVersionCache: {
                 type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2413.54.html',
             },
             restartOnAuthFail: true,
             takeoverOnConflict: true,
-            takeoverTimeoutMs: 0
+            takeoverTimeoutMs: 60000,
+            qrMaxRetries: 3,
+            authTimeoutMs: 300000
         });
         this.setupEventHandlers();
         this.client.initialize();
@@ -85,6 +92,7 @@ class WhatsAppService {
         this.client.on('auth_failure', this.handleAuthFailure.bind(this));
         this.client.on('disconnected', this.handleDisconnected.bind(this));
         this.client.on('change_state', this.handleStateChange.bind(this));
+        this.client.on('loading_screen', this.handleLoadingScreen.bind(this));
     }
     async handleQR(qr) {
         try {
@@ -109,6 +117,18 @@ class WhatsAppService {
         console.log('Cliente WhatsApp está listo!');
         this.removeQRFile();
     }
+    async waitForReady() {
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                console.log('Timeout: Cliente no completó sincronización en 5 minutos');
+                resolve();
+            }, 300000); // 5 minutos
+            this.client.once('ready', () => {
+                clearTimeout(timeout);
+                resolve();
+            });
+        });
+    }
     handleAuthenticated() {
         console.log('Cliente autenticado!');
         this.removeQRFile();
@@ -121,6 +141,9 @@ class WhatsAppService {
     }
     handleStateChange(state) {
         console.log('Estado del cliente cambiado a:', state);
+    }
+    handleLoadingScreen(percent, message) {
+        console.log(`Cargando WhatsApp: ${percent}% - ${message}`);
     }
     removeQRFile() {
         const qrPath = path.join(this.publicDir, 'qr.png');
