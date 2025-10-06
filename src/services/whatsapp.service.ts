@@ -22,7 +22,9 @@ export class WhatsAppService {
 
     private initializeClient(): void {
         this.client = new Client({
-            authStrategy: new LocalAuth(),
+            authStrategy: new LocalAuth({
+                clientId: "whatsapp-client"
+            }),
             puppeteer: {
                 args: [
                     '--no-sandbox',
@@ -33,18 +35,23 @@ export class WhatsAppService {
                     '--no-zygote',
                     '--disable-gpu',
                     '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding'
                 ],
                 headless: true,
-                timeout: 60000
+                timeout: 120000,
+                protocolTimeout: 120000
             },
             webVersionCache: {
                 type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2413.54.html',
             },
             restartOnAuthFail: true,
             takeoverOnConflict: true,
-            takeoverTimeoutMs: 0
+            takeoverTimeoutMs: 30000,
+            qrMaxRetries: 3
         });
 
         this.setupEventHandlers();
@@ -58,6 +65,7 @@ export class WhatsAppService {
         this.client.on('auth_failure', this.handleAuthFailure.bind(this));
         this.client.on('disconnected', this.handleDisconnected.bind(this));
         this.client.on('change_state', this.handleStateChange.bind(this));
+        this.client.on('loading_screen', this.handleLoadingScreen.bind(this));
     }
 
     private async handleQR(qr: string): Promise<void> {
@@ -100,6 +108,10 @@ export class WhatsAppService {
 
     private handleStateChange(state: string): void {
         console.log('Estado del cliente cambiado a:', state);
+    }
+
+    private handleLoadingScreen(percent: string, message: string): void {
+        console.log(`Cargando WhatsApp: ${percent}% - ${message}`);
     }
 
     private removeQRFile(): void {
