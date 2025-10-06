@@ -34,5 +34,23 @@ class WhatsAppController {
             ...qrStatus
         });
     }
+    async restartClient(req, res) {
+        try {
+            await this.whatsappService.restartClient();
+            res.json({
+                status: 200,
+                success: true,
+                message: 'Cliente de WhatsApp reiniciado correctamente'
+            });
+        }
+        catch (error) {
+            res.status(500).json({
+                status: 500,
+                success: false,
+                message: 'Error al reiniciar el cliente',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    }
 }
 exports.WhatsAppController = WhatsAppController;

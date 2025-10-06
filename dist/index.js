@@ -23,6 +23,7 @@ app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
 app.post('/api/send-message', auth_middleware_1.verifyToken, (req, res) => whatsappController.sendMessage(req, res));
 app.get('/api/status', auth_middleware_1.verifyToken, (req, res) => whatsappController.getStatus(req, res));
 app.get('/api/qr-status', auth_middleware_1.verifyToken, (req, res) => whatsappController.getQRStatus(req, res));
+app.post('/api/restart', auth_middleware_1.verifyToken, (req, res) => whatsappController.restartClient(req, res));
 // Iniciar servidor
 app.listen(port, () => {
     console.log(`Servidor corriendo en http://localhost:${port}`);

@@ -23,6 +23,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.post('/api/send-message', verifyToken, (req, res) => whatsappController.sendMessage(req, res));
 app.get('/api/status', verifyToken, (req, res) => whatsappController.getStatus(req, res));
 app.get('/api/qr-status', verifyToken, (req, res) => whatsappController.getQRStatus(req, res));
+app.post('/api/restart', verifyToken, (req, res) => whatsappController.restartClient(req, res));
 
 // Iniciar servidor
 app.listen(port, () => {

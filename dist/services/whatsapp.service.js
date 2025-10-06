@@ -53,8 +53,27 @@ class WhatsAppService {
         this.client = new whatsapp_web_js_1.Client({
             authStrategy: new whatsapp_web_js_1.LocalAuth(),
             puppeteer: {
-                args: ['--no-sandbox']
-            }
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor'
+                ],
+                headless: true,
+                timeout: 60000
+            },
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+            },
+            restartOnAuthFail: true,
+            takeoverOnConflict: true,
+            takeoverTimeoutMs: 0
         });
         this.setupEventHandlers();
         this.client.initialize();
@@ -64,6 +83,8 @@ class WhatsAppService {
         this.client.on('ready', this.handleReady.bind(this));
         this.client.on('authenticated', this.handleAuthenticated.bind(this));
         this.client.on('auth_failure', this.handleAuthFailure.bind(this));
+        this.client.on('disconnected', this.handleDisconnected.bind(this));
+        this.client.on('change_state', this.handleStateChange.bind(this));
     }
     async handleQR(qr) {
         try {
@@ -95,6 +116,12 @@ class WhatsAppService {
     handleAuthFailure(msg) {
         console.error('Error de autenticación:', msg);
     }
+    handleDisconnected(reason) {
+        console.log('Cliente desconectado:', reason);
+    }
+    handleStateChange(state) {
+        console.log('Estado del cliente cambiado a:', state);
+    }
     removeQRFile() {
         const qrPath = path.join(this.publicDir, 'qr.png');
         if (fs.existsSync(qrPath)) {
@@ -103,28 +130,103 @@ class WhatsAppService {
         }
     }
     async sendMessage(phoneNumber, message) {
+        const maxRetries = 3;
+        let lastError = null;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // Verificar si el cliente está conectado y autenticado
+                if (!this.isClientReady()) {
+                    if (attempt === maxRetries) {
+                        return {
+                            status: 503,
+                            message: 'Cliente de WhatsApp no está conectado. Verifica el estado de la conexión.',
+                            error: 'Cliente no disponible'
+                        };
+                    }
+                    console.log(`Intento ${attempt}/${maxRetries}: Cliente no listo, esperando...`);
+                    await this.waitForClient(2000);
+                    continue;
+                }
+                const formattedNumber = phoneNumber.replace(/[^\d]/g, '');
+                const chatId = `${formattedNumber}@c.us`;
+                // Verificar que el número tenga el formato correcto
+                if (formattedNumber.length < 10) {
+                    return {
+                        status: 400,
+                        message: 'Número de teléfono inválido. Debe incluir el código de país.',
+                        error: 'Formato de número incorrecto'
+                    };
+                }
+                // Esperar un poco más para asegurar que el cliente esté completamente listo
+                await this.waitForClient(1000);
+                const response = await this.client.sendMessage(chatId, message);
+                return {
+                    status: 200,
+                    message: 'El mensaje se ha enviado con éxito',
+                    data: {
+                        id: response.id._serialized,
+                        timestamp: response.timestamp,
+                        from: response.from,
+                        to: response.to,
+                        body: response.body
+                    }
+                };
+            }
+            catch (error) {
+                lastError = error;
+                console.error(`Error al enviar mensaje (intento ${attempt}/${maxRetries}):`, error);
+                // Si es el último intento, manejar el error
+                if (attempt === maxRetries) {
+                    // Manejar errores específicos
+                    if (lastError.message.includes('sendSeen')) {
+                        return {
+                            status: 503,
+                            message: 'Cliente de WhatsApp no está listo. Intenta reconectar.',
+                            error: 'Cliente no autenticado correctamente'
+                        };
+                    }
+                    if (lastError.message.includes('not-authorized')) {
+                        return {
+                            status: 401,
+                            message: 'No autorizado. Verifica la conexión de WhatsApp.',
+                            error: 'Sesión no autorizada'
+                        };
+                    }
+                    return {
+                        status: 500,
+                        message: 'Error al enviar mensaje',
+                        error: lastError.message
+                    };
+                }
+                // Esperar antes del siguiente intento
+                await this.waitForClient(2000);
+            }
+        }
+        return {
+            status: 500,
+            message: 'Error al enviar mensaje después de múltiples intentos',
+            error: lastError?.message || 'Error desconocido'
+        };
+    }
+    isClientReady() {
         try {
-            const formattedNumber = phoneNumber.replace(/[^\d]/g, '');
-            const chatId = `${formattedNumber}@c.us`;
-            const response = await this.client.sendMessage(chatId, message);
-            return {
-                status: 200,
-                message: 'El mensaje se ha enviado con éxito',
-                data: response
-            };
+            // Verificar múltiples condiciones para asegurar que el cliente esté listo
+            return !!(this.client &&
+                this.client.info &&
+                this.client.info.wid);
         }
         catch (error) {
-            console.error('Error al enviar mensaje:', error);
-            return {
-                status: 500,
-                message: 'Error al enviar mensaje',
-                error: error instanceof Error ? error.message : 'Error desconocido'
-            };
+            console.error('Error verificando estado del cliente:', error);
+            return false;
         }
     }
+    async waitForClient(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
     getStatus() {
+        const isReady = this.isClientReady();
         return {
-            status: this.client.info ? 'conectado' : 'desconectado'
+            status: isReady ? 'conectado' : 'desconectado'
         };
     }
     getQRStatus() {
@@ -132,6 +234,18 @@ class WhatsAppService {
         return {
             hasQR: fs.existsSync(qrPath)
         };
+    }
+    async restartClient() {
+        try {
+            console.log('Reiniciando cliente de WhatsApp...');
+            if (this.client) {
+                await this.client.destroy();
+            }
+            this.initializeClient();
+        }
+        catch (error) {
+            console.error('Error al reiniciar el cliente:', error);
+        }
     }
 }
 exports.WhatsAppService = WhatsAppService;
