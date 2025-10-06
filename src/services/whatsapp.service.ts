@@ -49,8 +49,9 @@ export class WhatsAppService {
             },
             restartOnAuthFail: true,
             takeoverOnConflict: true,
-            takeoverTimeoutMs: 30000,
-            qrMaxRetries: 3
+            takeoverTimeoutMs: 60000,
+            qrMaxRetries: 3,
+            authTimeoutMs: 300000
         });
 
         this.setupEventHandlers();
@@ -90,6 +91,20 @@ export class WhatsAppService {
     private handleReady(): void {
         console.log('Cliente WhatsApp está listo!');
         this.removeQRFile();
+    }
+
+    private async waitForReady(): Promise<void> {
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                console.log('Timeout: Cliente no completó sincronización en 5 minutos');
+                resolve();
+            }, 300000); // 5 minutos
+
+            this.client.once('ready', () => {
+                clearTimeout(timeout);
+                resolve();
+            });
+        });
     }
 
     private handleAuthenticated(): void {
