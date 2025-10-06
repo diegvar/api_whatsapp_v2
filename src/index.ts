@@ -9,7 +9,7 @@ import { verifyToken } from './middlewares/auth.middleware';
 config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3002;
 const whatsappController = new WhatsAppController();
 
 // Middleware
