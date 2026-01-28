@@ -124,10 +124,20 @@ class WhatsAppService {
         });
         this.client.on('disconnected', (reason) => {
             console.log('🔔 Evento disconnected disparado con razón:', reason);
+            console.log('📊 Estado antes de disconnected:', {
+                isReady: this.isReady,
+                isAuthenticated: this.isAuthenticated,
+                readyHandled: this.readyHandled
+            });
             this.handleDisconnected(reason);
         });
         this.client.on('change_state', (state) => {
             console.log('🔔 Evento change_state disparado:', state);
+            console.log('📊 Estado antes de change_state:', {
+                isReady: this.isReady,
+                isAuthenticated: this.isAuthenticated,
+                readyHandled: this.readyHandled
+            });
             this.handleStateChange(state);
         });
         this.client.on('loading_screen', (percent, message) => {
@@ -136,15 +146,29 @@ class WhatsAppService {
     }
     async handleQR(qr) {
         try {
-            console.log('📱 Generando nuevo código QR...');
-            console.log('📊 Estado actual cuando se genera QR:', {
+            const currentState = {
                 isReady: this.isReady,
                 isAuthenticated: this.isAuthenticated,
                 readyHandled: this.readyHandled,
                 hasClient: !!this.client,
                 hasInfo: !!(this.client?.info),
                 hasWid: !!(this.client?.info?.wid)
-            });
+            };
+            console.log('📱 Generando nuevo código QR...');
+            console.log('📊 Estado actual cuando se genera QR:', currentState);
+            // Si el cliente ya estaba listo, esto es una reautenticación forzada
+            if (currentState.isReady && currentState.isAuthenticated) {
+                console.warn('⚠️ ADVERTENCIA: QR generado cuando el cliente ya estaba listo!');
+                console.warn('   Esto indica que WhatsApp está pidiendo reautenticación');
+                console.warn('   Posibles causas:');
+                console.warn('   - WhatsApp detectó actividad sospechosa');
+                console.warn('   - Sesión expirada o invalidada');
+                console.warn('   - Cambio en la sesión desde otro dispositivo');
+                // Marcar como no listo ya que requiere reautenticación
+                this.isReady = false;
+                this.isAuthenticated = false;
+                this.readyHandled = false;
+            }
             const qrImage = await qrcode.toDataURL(qr);
             const base64Data = qrImage.replace(/^data:image\/png;base64,/, '');
             const qrPath = path.join(this.publicDir, 'qr.png');
