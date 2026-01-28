@@ -165,19 +165,23 @@ export class WhatsAppService {
             console.log('QR disponible después de desconexión - requiere reautenticación');
         }
         
+        // NO reiniciar automáticamente para evitar loops de reconexión
+        // El cliente de whatsapp-web.js manejará la reconexión automáticamente
+        // Solo registrar el evento
+        
         // Si se alcanzó el límite de reintentos de QR, intentar reiniciar automáticamente
         if (reason.includes('Max qrcode retries reached')) {
-            console.log('⚠️ Se alcanzó el límite de reintentos de QR. Reiniciando cliente en 5 segundos...');
+            console.log('⚠️ Se alcanzó el límite de reintentos de QR. Reiniciando cliente en 10 segundos...');
             setTimeout(async () => {
                 try {
                     await this.restartClient();
                 } catch (error) {
                     console.error('Error al reiniciar automáticamente:', error);
                 }
-            }, 5000);
+            }, 10000); // Aumentado a 10 segundos para evitar loops
         } else {
-            // Para otras desconexiones, intentar reconectar después de un tiempo
-            console.log('⚠️ Cliente desconectado. Esperando reconexión automática...');
+            // Para otras desconexiones, el cliente intentará reconectar automáticamente
+            console.log('⚠️ Cliente desconectado. El cliente intentará reconectar automáticamente...');
         }
     }
 
@@ -285,13 +289,34 @@ export class WhatsAppService {
                 }
 
                 // Verificar una vez más que el cliente tiene acceso a las funciones internas
-                if (!this.client || !this.client.pupPage) {
+                if (!this.client) {
+                    throw new Error('El cliente no existe');
+                }
+
+                if (!this.client.pupPage) {
                     throw new Error('El cliente no tiene acceso a Puppeteer - no está completamente inicializado');
                 }
 
-                // Esperar un momento adicional para asegurar que todo esté sincronizado
-                await this.waitForClient(1000);
+                // Verificar que el cliente tiene acceso a la información básica
+                if (!this.client.info || !this.client.info.wid) {
+                    throw new Error('El cliente no tiene información válida - no está completamente sincronizado');
+                }
 
+                // Verificación adicional: intentar acceder a una propiedad interna para verificar que está listo
+                try {
+                    // Verificar que el cliente tiene el objeto interno necesario
+                    if (!this.client.pupPage || !this.client.pupPage.evaluate) {
+                        throw new Error('El cliente no tiene acceso completo a Puppeteer');
+                    }
+                } catch (verifyError) {
+                    console.error('Error verificando acceso a Puppeteer:', verifyError);
+                    throw new Error('El cliente no está completamente inicializado - falta acceso a funciones internas');
+                }
+
+                // Esperar un momento adicional para asegurar que todo esté sincronizado
+                await this.waitForClient(2000);
+
+                // Intentar enviar el mensaje
                 const response = await this.client.sendMessage(chatId, message);
                 
                 return {
@@ -309,20 +334,27 @@ export class WhatsAppService {
                 lastError = error as Error;
                 console.error(`Error al enviar mensaje (intento ${attempt}/${maxRetries}):`, error);
                 
-                // Manejar errores específicos
-                if (lastError.message.includes('getChat') || lastError.message.includes('Cannot read properties of undefined')) {
+                // Manejar errores específicos relacionados con inicialización
+                if (lastError.message.includes('getChat') || 
+                    lastError.message.includes('Cannot read properties of undefined') ||
+                    lastError.message.includes('no está completamente inicializado') ||
+                    lastError.message.includes('no tiene acceso')) {
+                    
                     console.error('Error: El cliente no está completamente inicializado');
-                    this.isReady = false;
+                    // NO cambiar isReady a false aquí para evitar desconexión innecesaria
+                    // Solo marcar como no listo temporalmente
                     
                     if (attempt === maxRetries) {
+                        // No desconectar, solo reportar el error
                         return {
                             status: 503,
-                            message: 'Cliente de WhatsApp no está completamente inicializado. Por favor, espera a que termine la autenticación o reinicia el cliente.',
-                            error: 'Cliente no inicializado correctamente'
+                            message: 'Cliente de WhatsApp no está completamente sincronizado. Por favor, espera unos segundos y vuelve a intentar, o verifica el estado con /api/status.',
+                            error: 'Cliente no completamente sincronizado - intenta de nuevo en unos segundos'
                         };
                     }
-                    // Esperar más tiempo antes del siguiente intento
-                    await this.waitForClient(5000);
+                    // Esperar más tiempo antes del siguiente intento para dar tiempo a sincronizar
+                    console.log(`Esperando ${5000 * attempt}ms antes del siguiente intento para permitir sincronización...`);
+                    await this.waitForClient(5000 * attempt); // Espera progresiva
                     continue;
                 }
                 
