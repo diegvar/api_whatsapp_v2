@@ -85,9 +85,10 @@ export class WhatsAppService {
             this.handleQR(qr);
         });
         
-        // Usar once para ready - solo se ejecuta una vez por inicialización
-        this.client.once('ready', () => {
-            console.log('🔔 Evento ready capturado (once)');
+        // Usar on para ready - puede ejecutarse múltiples veces (reautenticación)
+        // Pero solo procesar si no está ya manejado o si se reseteó
+        this.client.on('ready', () => {
+            console.log('🔔 Evento ready capturado');
             this.handleReady();
         });
         
@@ -148,11 +149,17 @@ export class WhatsAppService {
                 console.warn('   - WhatsApp detectó actividad sospechosa');
                 console.warn('   - Sesión expirada o invalidada');
                 console.warn('   - Cambio en la sesión desde otro dispositivo');
+                console.warn('');
+                console.warn('🔄 El sistema esperará automáticamente a que escanees el QR');
+                console.warn('   Una vez escaneado, el cliente volverá a estar listo automáticamente');
                 
                 // Marcar como no listo ya que requiere reautenticación
                 this.isReady = false;
                 this.isAuthenticated = false;
                 this.readyHandled = false;
+                
+                // Iniciar monitoreo automático para detectar cuando se escanea el QR
+                this.monitorQRScan();
             }
             
             const qrImage = await qrcode.toDataURL(qr);
@@ -173,24 +180,21 @@ export class WhatsAppService {
     }
 
     private handleReady(): void {
-        // Prevenir múltiples manejos del mismo evento ready
-        if (this.readyHandled) {
-            console.log('⚠️ handleReady llamado pero ya fue manejado - ignorando');
+        // Si ya está listo y manejado, verificar si es una reautenticación
+        if (this.readyHandled && this.isReady) {
+            console.log('🔄 Evento ready recibido cuando ya estaba listo - posible reautenticación');
+            // Resetear para permitir nuevo manejo
+            this.readyHandled = false;
+        }
+
+        // Prevenir múltiples manejos del mismo ciclo de ready
+        if (this.readyHandled && !this.isReady) {
+            console.log('⚠️ handleReady llamado pero ya está en proceso - ignorando');
             return;
         }
 
         console.log('✅ Cliente WhatsApp está listo!');
         this.readyHandled = true;
-        
-        // Re-agregar el listener una vez más por si acaso (aunque con once no debería ser necesario)
-        // Pero solo si no está ya manejado
-        if (!this.isReady) {
-            this.client.once('ready', () => {
-                if (!this.readyHandled) {
-                    console.log('🔔 Segundo evento ready capturado - ignorando');
-                }
-            });
-        }
         
         // Verificar inmediatamente que tiene la información básica
         if (this.client && this.client.info && this.client.info.wid) {
@@ -222,6 +226,7 @@ export class WhatsAppService {
                 this.isReady = true;
                 this.isAuthenticated = true;
                 console.log('✅ Cliente completamente sincronizado y listo para usar');
+                console.log('🔄 Reautenticación completada automáticamente');
             } else {
                 console.warn('⚠️ Cliente dijo estar listo pero hay QR disponible - esperando...');
                 this.readyHandled = false; // Permitir reintento si hay QR
@@ -365,8 +370,49 @@ export class WhatsAppService {
         const qrPath = path.join(this.publicDir, 'qr.png');
         if (fs.existsSync(qrPath)) {
             fs.unlinkSync(qrPath);
-            console.log('Archivo QR eliminado después de la autenticación');
+            console.log('🗑️ Archivo QR eliminado después de la autenticación');
         }
+    }
+
+    private monitorQRScan(): void {
+        const qrPath = path.join(this.publicDir, 'qr.png');
+        const maxWaitTime = 300000; // 5 minutos máximo
+        const checkInterval = 2000; // Verificar cada 2 segundos
+        const startTime = Date.now();
+        
+        console.log('👀 Monitoreando QR para detectar cuando se escanee...');
+        
+        const checkQR = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            
+            // Si el QR ya no existe, significa que se escaneó
+            if (!fs.existsSync(qrPath)) {
+                console.log('✅ QR escaneado detectado! Esperando que el cliente vuelva a estar listo...');
+                clearInterval(checkQR);
+                // El evento ready se disparará automáticamente cuando esté listo
+                return;
+            }
+            
+            // Si el cliente ya está listo, cancelar monitoreo
+            if (this.isReady && this.isAuthenticated) {
+                console.log('✅ Cliente ya está listo - cancelando monitoreo de QR');
+                clearInterval(checkQR);
+                return;
+            }
+            
+            // Si se agotó el tiempo, cancelar
+            if (elapsed >= maxWaitTime) {
+                console.warn('⏱️ Tiempo de espera agotado para escanear QR');
+                clearInterval(checkQR);
+                return;
+            }
+            
+            // Mostrar progreso cada 30 segundos
+            if (elapsed % 30000 < checkInterval) {
+                const remaining = Math.floor((maxWaitTime - elapsed) / 1000);
+                console.log(`⏳ Esperando escaneo de QR... (${remaining}s restantes)`);
+            }
+        }, checkInterval);
     }
 
     public async sendMessage(phoneNumber: string, message: string): Promise<ApiResponse> {
