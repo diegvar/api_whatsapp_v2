@@ -23,9 +23,17 @@ export class WhatsAppService {
     }
 
     private initializeClient(): void {
+        // Asegurar que el directorio de autenticación existe
+        const authDir = path.join(process.cwd(), '.wwebjs_auth');
+        if (!fs.existsSync(authDir)) {
+            fs.mkdirSync(authDir, { recursive: true });
+            console.log('Directorio de autenticación creado:', authDir);
+        }
+
         this.client = new Client({
             authStrategy: new LocalAuth({
-                clientId: "whatsapp-client"
+                clientId: "whatsapp-client",
+                dataPath: authDir
             }),
             puppeteer: {
                 args: [
@@ -92,8 +100,31 @@ export class WhatsAppService {
 
     private handleReady(): void {
         console.log('Cliente WhatsApp está listo!');
-        this.isReady = true;
-        this.isAuthenticated = true;
+        // Verificar inmediatamente que tiene la información básica
+        if (this.client && this.client.info && this.client.info.wid) {
+            console.log(`Cliente autenticado como: ${this.client.info.wid.user}`);
+        }
+        
+        // Esperar un momento adicional para asegurar que todo esté sincronizado
+        // WhatsApp Web necesita tiempo para cargar completamente después de "ready"
+        setTimeout(() => {
+            // Verificar que realmente está listo antes de marcar como ready
+            if (this.client && this.client.info && this.client.info.wid) {
+                // Verificar también que no hay QR (doble verificación)
+                const qrPath = path.join(this.publicDir, 'qr.png');
+                const hasQR = fs.existsSync(qrPath);
+                
+                if (!hasQR) {
+                    this.isReady = true;
+                    this.isAuthenticated = true;
+                    console.log('✅ Cliente completamente sincronizado y listo para usar');
+                } else {
+                    console.warn('⚠️ Cliente dijo estar listo pero hay QR disponible - esperando...');
+                }
+            } else {
+                console.warn('⚠️ Cliente dijo estar listo pero no tiene información válida');
+            }
+        }, 5000); // Esperar 5 segundos después de "ready" para asegurar sincronización completa
         this.removeQRFile();
     }
 
@@ -128,6 +159,12 @@ export class WhatsAppService {
         this.isReady = false;
         this.isAuthenticated = false;
         
+        // Limpiar QR si existe (por si se desconectó y necesita reautenticación)
+        const qrPath = path.join(this.publicDir, 'qr.png');
+        if (fs.existsSync(qrPath)) {
+            console.log('QR disponible después de desconexión - requiere reautenticación');
+        }
+        
         // Si se alcanzó el límite de reintentos de QR, intentar reiniciar automáticamente
         if (reason.includes('Max qrcode retries reached')) {
             console.log('⚠️ Se alcanzó el límite de reintentos de QR. Reiniciando cliente en 5 segundos...');
@@ -138,15 +175,30 @@ export class WhatsAppService {
                     console.error('Error al reiniciar automáticamente:', error);
                 }
             }, 5000);
+        } else {
+            // Para otras desconexiones, intentar reconectar después de un tiempo
+            console.log('⚠️ Cliente desconectado. Esperando reconexión automática...');
         }
     }
 
     private handleStateChange(state: string): void {
         console.log('Estado del cliente cambiado a:', state);
         // Actualizar estado según el cambio
-        if (state === 'CONNECTED' || state === 'READY') {
-            this.isReady = true;
-        } else if (state === 'DISCONNECTED' || state === 'UNPAIRED') {
+        if (state === 'CONNECTED') {
+            // CONNECTED no significa READY, solo que está conectado
+            console.log('Cliente conectado, esperando sincronización...');
+        } else if (state === 'READY') {
+            // READY significa que está completamente listo
+            console.log('Estado READY confirmado');
+            // Esperar un momento antes de marcar como ready
+            setTimeout(() => {
+                if (this.client && this.client.info && this.client.info.wid) {
+                    this.isReady = true;
+                    this.isAuthenticated = true;
+                }
+            }, 2000);
+        } else if (state === 'DISCONNECTED' || state === 'UNPAIRED' || state === 'CONFLICT') {
+            console.log(`Estado crítico: ${state} - Cliente no disponible`);
             this.isReady = false;
             this.isAuthenticated = false;
         }
@@ -232,8 +284,13 @@ export class WhatsAppService {
                     continue;
                 }
 
+                // Verificar una vez más que el cliente tiene acceso a las funciones internas
+                if (!this.client || !this.client.pupPage) {
+                    throw new Error('El cliente no tiene acceso a Puppeteer - no está completamente inicializado');
+                }
+
                 // Esperar un momento adicional para asegurar que todo esté sincronizado
-                await this.waitForClient(500);
+                await this.waitForClient(1000);
 
                 const response = await this.client.sendMessage(chatId, message);
                 
