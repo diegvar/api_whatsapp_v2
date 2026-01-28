@@ -42,6 +42,7 @@ class WhatsAppService {
     constructor() {
         this.isReady = false;
         this.isAuthenticated = false;
+        this.readyHandled = false; // Prevenir múltiples manejos del evento ready
         this.publicDir = path.join(__dirname, '../../public');
         this.ensurePublicDir();
         this.initializeClient();
@@ -123,10 +124,19 @@ class WhatsAppService {
         }
     }
     handleReady() {
+        // Prevenir múltiples manejos del mismo evento ready
+        if (this.readyHandled && this.isReady) {
+            console.log('⚠️ Evento ready recibido nuevamente pero ya está marcado como listo - ignorando');
+            return;
+        }
         console.log('Cliente WhatsApp está listo!');
+        this.readyHandled = true;
         // Verificar inmediatamente que tiene la información básica
         if (this.client && this.client.info && this.client.info.wid) {
             console.log(`Cliente autenticado como: ${this.client.info.wid.user}`);
+        }
+        else {
+            console.warn('⚠️ Cliente dijo estar listo pero no tiene información válida aún');
         }
         // Esperar un momento adicional para asegurar que todo esté sincronizado
         // WhatsApp Web necesita tiempo para cargar completamente después de "ready"
@@ -143,10 +153,12 @@ class WhatsAppService {
                 }
                 else {
                     console.warn('⚠️ Cliente dijo estar listo pero hay QR disponible - esperando...');
+                    this.readyHandled = false; // Permitir reintento si hay QR
                 }
             }
             else {
                 console.warn('⚠️ Cliente dijo estar listo pero no tiene información válida');
+                this.readyHandled = false; // Permitir reintento si no tiene info
             }
         }, 5000); // Esperar 5 segundos después de "ready" para asegurar sincronización completa
         this.removeQRFile();
@@ -174,13 +186,14 @@ class WhatsAppService {
         this.isReady = false;
     }
     handleDisconnected(reason) {
-        console.log('Cliente desconectado:', reason);
+        console.log('⚠️ Cliente desconectado. Razón:', reason);
         this.isReady = false;
         this.isAuthenticated = false;
+        this.readyHandled = false; // Resetear para permitir nuevo manejo de ready
         // Limpiar QR si existe (por si se desconectó y necesita reautenticación)
         const qrPath = path.join(this.publicDir, 'qr.png');
         if (fs.existsSync(qrPath)) {
-            console.log('QR disponible después de desconexión - requiere reautenticación');
+            console.log('📱 QR disponible después de desconexión - requiere reautenticación');
         }
         // NO reiniciar automáticamente para evitar loops de reconexión
         // El cliente de whatsapp-web.js manejará la reconexión automáticamente
@@ -199,31 +212,41 @@ class WhatsAppService {
         }
         else {
             // Para otras desconexiones, el cliente intentará reconectar automáticamente
-            console.log('⚠️ Cliente desconectado. El cliente intentará reconectar automáticamente...');
+            console.log('🔄 Cliente desconectado. El cliente intentará reconectar automáticamente...');
+            console.log('   Razón de desconexión:', reason);
         }
     }
     handleStateChange(state) {
-        console.log('Estado del cliente cambiado a:', state);
+        console.log('📊 Estado del cliente cambiado a:', state);
         // Actualizar estado según el cambio
         if (state === 'CONNECTED') {
             // CONNECTED no significa READY, solo que está conectado
-            console.log('Cliente conectado, esperando sincronización...');
+            console.log('🔗 Cliente conectado, esperando sincronización...');
         }
         else if (state === 'READY') {
             // READY significa que está completamente listo
-            console.log('Estado READY confirmado');
-            // Esperar un momento antes de marcar como ready
-            setTimeout(() => {
-                if (this.client && this.client.info && this.client.info.wid) {
-                    this.isReady = true;
-                    this.isAuthenticated = true;
-                }
-            }, 2000);
+            console.log('✅ Estado READY confirmado');
+            // No marcar como ready aquí, dejar que handleReady lo haga
+            // Solo si handleReady no se ha ejecutado aún
+            if (!this.readyHandled) {
+                setTimeout(() => {
+                    if (this.client && this.client.info && this.client.info.wid) {
+                        const qrPath = path.join(this.publicDir, 'qr.png');
+                        if (!fs.existsSync(qrPath)) {
+                            this.isReady = true;
+                            this.isAuthenticated = true;
+                            this.readyHandled = true;
+                            console.log('✅ Cliente marcado como listo desde change_state');
+                        }
+                    }
+                }, 2000);
+            }
         }
         else if (state === 'DISCONNECTED' || state === 'UNPAIRED' || state === 'CONFLICT') {
-            console.log(`Estado crítico: ${state} - Cliente no disponible`);
+            console.log(`❌ Estado crítico: ${state} - Cliente no disponible`);
             this.isReady = false;
             this.isAuthenticated = false;
+            this.readyHandled = false;
         }
     }
     handleLoadingScreen(percent, message) {
@@ -451,9 +474,10 @@ class WhatsAppService {
     }
     async restartClient() {
         try {
-            console.log('Reiniciando cliente de WhatsApp...');
+            console.log('🔄 Reiniciando cliente de WhatsApp...');
             this.isReady = false;
             this.isAuthenticated = false;
+            this.readyHandled = false; // Resetear flag de ready
             if (this.client) {
                 await this.client.destroy();
             }
@@ -465,6 +489,7 @@ class WhatsAppService {
             console.error('Error al reiniciar el cliente:', error);
             this.isReady = false;
             this.isAuthenticated = false;
+            this.readyHandled = false;
         }
     }
 }
