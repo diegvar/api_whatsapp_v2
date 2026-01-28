@@ -104,36 +104,61 @@ class WhatsAppService {
         this.client.removeAllListeners('disconnected');
         this.client.removeAllListeners('change_state');
         this.client.removeAllListeners('loading_screen');
-        // Agregar listeners
-        this.client.on('qr', this.handleQR.bind(this));
+        // Agregar listeners con logging adicional
+        this.client.on('qr', (qr) => {
+            console.log('🔔 Evento QR disparado');
+            this.handleQR(qr);
+        });
         // Usar once para ready - solo se ejecuta una vez por inicialización
         this.client.once('ready', () => {
             console.log('🔔 Evento ready capturado (once)');
             this.handleReady();
         });
-        this.client.on('authenticated', this.handleAuthenticated.bind(this));
-        this.client.on('auth_failure', this.handleAuthFailure.bind(this));
-        this.client.on('disconnected', this.handleDisconnected.bind(this));
-        this.client.on('change_state', this.handleStateChange.bind(this));
-        this.client.on('loading_screen', this.handleLoadingScreen.bind(this));
+        this.client.on('authenticated', () => {
+            console.log('🔔 Evento authenticated disparado');
+            this.handleAuthenticated();
+        });
+        this.client.on('auth_failure', (msg) => {
+            console.log('🔔 Evento auth_failure disparado:', msg);
+            this.handleAuthFailure(msg);
+        });
+        this.client.on('disconnected', (reason) => {
+            console.log('🔔 Evento disconnected disparado con razón:', reason);
+            this.handleDisconnected(reason);
+        });
+        this.client.on('change_state', (state) => {
+            console.log('🔔 Evento change_state disparado:', state);
+            this.handleStateChange(state);
+        });
+        this.client.on('loading_screen', (percent, message) => {
+            this.handleLoadingScreen(percent, message);
+        });
     }
     async handleQR(qr) {
         try {
-            console.log('Generando nuevo código QR...');
+            console.log('📱 Generando nuevo código QR...');
+            console.log('📊 Estado actual cuando se genera QR:', {
+                isReady: this.isReady,
+                isAuthenticated: this.isAuthenticated,
+                readyHandled: this.readyHandled,
+                hasClient: !!this.client,
+                hasInfo: !!(this.client?.info),
+                hasWid: !!(this.client?.info?.wid)
+            });
             const qrImage = await qrcode.toDataURL(qr);
             const base64Data = qrImage.replace(/^data:image\/png;base64,/, '');
             const qrPath = path.join(this.publicDir, 'qr.png');
             fs.writeFileSync(qrPath, base64Data, 'base64');
-            console.log('Código QR generado y guardado en:', qrPath);
+            console.log('✅ Código QR generado y guardado en:', qrPath);
             if (fs.existsSync(qrPath)) {
-                console.log('Archivo QR verificado correctamente');
+                console.log('✅ Archivo QR verificado correctamente');
             }
             else {
-                console.error('Error: El archivo QR no se creó correctamente');
+                console.error('❌ Error: El archivo QR no se creó correctamente');
             }
         }
         catch (error) {
-            console.error('Error al generar el código QR:', error);
+            console.error('❌ Error al generar el código QR:', error);
         }
     }
     handleReady() {
