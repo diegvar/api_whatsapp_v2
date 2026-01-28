@@ -194,19 +194,35 @@ class WhatsAppService {
                 error: 'Formato de número incorrecto'
             };
         }
-        // Esperar hasta que el cliente esté completamente listo (máximo 30 segundos)
-        const maxWaitTime = 30000; // 30 segundos
-        const startTime = Date.now();
-        while (!this.isClientFullyReady() && (Date.now() - startTime) < maxWaitTime) {
-            console.log('Esperando a que el cliente esté completamente listo...');
-            await this.waitForClient(2000);
-        }
+        // Verificar estado inicial
         if (!this.isClientFullyReady()) {
-            return {
-                status: 503,
-                message: 'Cliente de WhatsApp no está conectado o autenticado. Por favor, escanea el código QR primero.',
-                error: 'Cliente no disponible - requiere autenticación'
-            };
+            const qrPath = path.join(this.publicDir, 'qr.png');
+            const hasQR = fs.existsSync(qrPath);
+            if (hasQR) {
+                return {
+                    status: 503,
+                    message: 'Cliente de WhatsApp requiere autenticación. Por favor, escanea el código QR disponible en /qr.png o usa el endpoint /api/qr-status para verificar.',
+                    error: 'Cliente no autenticado - QR disponible'
+                };
+            }
+            // Esperar hasta que el cliente esté completamente listo (máximo 10 segundos)
+            const maxWaitTime = 10000; // 10 segundos (reducido porque si no está listo, probablemente necesita QR)
+            const startTime = Date.now();
+            while (!this.isClientFullyReady() && (Date.now() - startTime) < maxWaitTime) {
+                console.log('Esperando a que el cliente esté completamente listo...');
+                await this.waitForClient(1000);
+            }
+            if (!this.isClientFullyReady()) {
+                const qrPathCheck = path.join(this.publicDir, 'qr.png');
+                const hasQRCheck = fs.existsSync(qrPathCheck);
+                return {
+                    status: 503,
+                    message: hasQRCheck
+                        ? 'Cliente de WhatsApp requiere autenticación. Por favor, escanea el código QR primero.'
+                        : 'Cliente de WhatsApp no está conectado. Verifica el estado con /api/status.',
+                    error: 'Cliente no disponible - requiere autenticación o conexión'
+                };
+            }
         }
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -303,11 +319,31 @@ class WhatsAppService {
     isClientFullyReady() {
         try {
             // Verificación más estricta: debe estar listo Y autenticado
-            return this.isReady &&
-                this.isAuthenticated &&
-                !!(this.client &&
-                    this.client.info &&
-                    this.client.info.wid);
+            const hasClient = !!(this.client);
+            const hasInfo = !!(this.client?.info);
+            const hasWid = !!(this.client?.info?.wid);
+            const isReady = this.isReady;
+            const isAuthenticated = this.isAuthenticated;
+            // Verificar también que no hay QR pendiente
+            const qrPath = path.join(this.publicDir, 'qr.png');
+            const hasQR = fs.existsSync(qrPath);
+            const fullyReady = isReady &&
+                isAuthenticated &&
+                hasClient &&
+                hasInfo &&
+                hasWid &&
+                !hasQR; // No debe haber QR si está autenticado
+            if (!fullyReady) {
+                console.log('Cliente no completamente listo:', {
+                    isReady,
+                    isAuthenticated,
+                    hasClient,
+                    hasInfo,
+                    hasWid,
+                    hasQR
+                });
+            }
+            return fullyReady;
         }
         catch (error) {
             console.error('Error verificando estado completo del cliente:', error);
