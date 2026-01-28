@@ -96,8 +96,21 @@ class WhatsAppService {
         this.client.initialize();
     }
     setupEventHandlers() {
+        // Remover listeners anteriores si existen para evitar duplicados
+        this.client.removeAllListeners('qr');
+        this.client.removeAllListeners('ready');
+        this.client.removeAllListeners('authenticated');
+        this.client.removeAllListeners('auth_failure');
+        this.client.removeAllListeners('disconnected');
+        this.client.removeAllListeners('change_state');
+        this.client.removeAllListeners('loading_screen');
+        // Agregar listeners
         this.client.on('qr', this.handleQR.bind(this));
-        this.client.on('ready', this.handleReady.bind(this));
+        // Usar once para ready - solo se ejecuta una vez por inicialización
+        this.client.once('ready', () => {
+            console.log('🔔 Evento ready capturado (once)');
+            this.handleReady();
+        });
         this.client.on('authenticated', this.handleAuthenticated.bind(this));
         this.client.on('auth_failure', this.handleAuthFailure.bind(this));
         this.client.on('disconnected', this.handleDisconnected.bind(this));
@@ -125,43 +138,54 @@ class WhatsAppService {
     }
     handleReady() {
         // Prevenir múltiples manejos del mismo evento ready
-        if (this.readyHandled && this.isReady) {
-            console.log('⚠️ Evento ready recibido nuevamente pero ya está marcado como listo - ignorando');
+        if (this.readyHandled) {
+            console.log('⚠️ handleReady llamado pero ya fue manejado - ignorando');
             return;
         }
-        console.log('Cliente WhatsApp está listo!');
+        console.log('✅ Cliente WhatsApp está listo!');
         this.readyHandled = true;
+        // Re-agregar el listener una vez más por si acaso (aunque con once no debería ser necesario)
+        // Pero solo si no está ya manejado
+        if (!this.isReady) {
+            this.client.once('ready', () => {
+                if (!this.readyHandled) {
+                    console.log('🔔 Segundo evento ready capturado - ignorando');
+                }
+            });
+        }
         // Verificar inmediatamente que tiene la información básica
         if (this.client && this.client.info && this.client.info.wid) {
-            console.log(`Cliente autenticado como: ${this.client.info.wid.user}`);
+            console.log(`👤 Cliente autenticado como: ${this.client.info.wid.user}`);
         }
         else {
             console.warn('⚠️ Cliente dijo estar listo pero no tiene información válida aún');
+            this.readyHandled = false; // Permitir reintento si no tiene info
+            return;
         }
+        // Eliminar QR inmediatamente
+        this.removeQRFile();
         // Esperar un momento adicional para asegurar que todo esté sincronizado
         // WhatsApp Web necesita tiempo para cargar completamente después de "ready"
         setTimeout(() => {
             // Verificar que realmente está listo antes de marcar como ready
-            if (this.client && this.client.info && this.client.info.wid) {
-                // Verificar también que no hay QR (doble verificación)
-                const qrPath = path.join(this.publicDir, 'qr.png');
-                const hasQR = fs.existsSync(qrPath);
-                if (!hasQR) {
-                    this.isReady = true;
-                    this.isAuthenticated = true;
-                    console.log('✅ Cliente completamente sincronizado y listo para usar');
-                }
-                else {
-                    console.warn('⚠️ Cliente dijo estar listo pero hay QR disponible - esperando...');
-                    this.readyHandled = false; // Permitir reintento si hay QR
-                }
+            if (!this.client || !this.client.info || !this.client.info.wid) {
+                console.warn('⚠️ Cliente perdió información después de ready - reiniciando verificación');
+                this.readyHandled = false;
+                return;
+            }
+            // Verificar también que no hay QR (doble verificación)
+            const qrPath = path.join(this.publicDir, 'qr.png');
+            const hasQR = fs.existsSync(qrPath);
+            if (!hasQR) {
+                this.isReady = true;
+                this.isAuthenticated = true;
+                console.log('✅ Cliente completamente sincronizado y listo para usar');
             }
             else {
-                console.warn('⚠️ Cliente dijo estar listo pero no tiene información válida');
-                this.readyHandled = false; // Permitir reintento si no tiene info
+                console.warn('⚠️ Cliente dijo estar listo pero hay QR disponible - esperando...');
+                this.readyHandled = false; // Permitir reintento si hay QR
             }
         }, 5000); // Esperar 5 segundos después de "ready" para asegurar sincronización completa
-        this.removeQRFile();
     }
     async waitForReady() {
         return new Promise((resolve) => {
@@ -176,9 +200,13 @@ class WhatsAppService {
         });
     }
     handleAuthenticated() {
-        console.log('Cliente autenticado!');
-        this.isAuthenticated = true;
-        this.removeQRFile();
+        // Prevenir logging excesivo del evento authenticated
+        if (!this.isAuthenticated) {
+            console.log('🔐 Cliente autenticado!');
+            this.isAuthenticated = true;
+            this.removeQRFile();
+        }
+        // Si ya está autenticado, no hacer nada (evitar logs repetitivos)
     }
     handleAuthFailure(msg) {
         console.error('Error de autenticación:', msg);
