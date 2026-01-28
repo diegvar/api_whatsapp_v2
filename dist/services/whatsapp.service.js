@@ -86,8 +86,8 @@ class WhatsAppService {
                 type: 'remote',
                 remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2413.54.html',
             },
-            restartOnAuthFail: true,
-            takeoverOnConflict: true,
+            restartOnAuthFail: false, // Deshabilitado para evitar reinicios innecesarios
+            takeoverOnConflict: false, // Deshabilitado para evitar conflictos
             takeoverTimeoutMs: 60000,
             qrMaxRetries: 10,
             authTimeoutMs: 600000
@@ -215,6 +215,13 @@ class WhatsAppService {
     }
     handleDisconnected(reason) {
         console.log('⚠️ Cliente desconectado. Razón:', reason);
+        console.log('📊 Estado antes de desconexión:', {
+            isReady: this.isReady,
+            isAuthenticated: this.isAuthenticated,
+            hasClient: !!this.client,
+            hasInfo: !!(this.client?.info),
+            hasWid: !!(this.client?.info?.wid)
+        });
         this.isReady = false;
         this.isAuthenticated = false;
         this.readyHandled = false; // Resetear para permitir nuevo manejo de ready
@@ -222,6 +229,22 @@ class WhatsAppService {
         const qrPath = path.join(this.publicDir, 'qr.png');
         if (fs.existsSync(qrPath)) {
             console.log('📱 QR disponible después de desconexión - requiere reautenticación');
+        }
+        // Analizar la razón de desconexión
+        if (reason.includes('NAVIGATION')) {
+            console.log('🔍 Razón: NAVIGATION - Posible cambio de página o redirección');
+        }
+        else if (reason.includes('CONFLICT')) {
+            console.log('🔍 Razón: CONFLICT - Otra sesión de WhatsApp Web está activa');
+        }
+        else if (reason.includes('LOGOUT')) {
+            console.log('🔍 Razón: LOGOUT - Sesión cerrada desde el teléfono');
+        }
+        else if (reason.includes('TIMEOUT')) {
+            console.log('🔍 Razón: TIMEOUT - Tiempo de espera agotado');
+        }
+        else if (reason.includes('close')) {
+            console.log('🔍 Razón: close - Conexión cerrada');
         }
         // NO reiniciar automáticamente para evitar loops de reconexión
         // El cliente de whatsapp-web.js manejará la reconexión automáticamente
@@ -241,7 +264,10 @@ class WhatsAppService {
         else {
             // Para otras desconexiones, el cliente intentará reconectar automáticamente
             console.log('🔄 Cliente desconectado. El cliente intentará reconectar automáticamente...');
-            console.log('   Razón de desconexión:', reason);
+            console.log('   Si el problema persiste, verifica:');
+            console.log('   1. Que no haya otra sesión de WhatsApp Web abierta');
+            console.log('   2. Que la sesión no haya sido cerrada desde el teléfono');
+            console.log('   3. Que la conexión a internet sea estable');
         }
     }
     handleStateChange(state) {
@@ -253,7 +279,7 @@ class WhatsAppService {
         }
         else if (state === 'READY') {
             // READY significa que está completamente listo
-            console.log('✅ Estado READY confirmado');
+            console.log('✅ Estado READY confirmado en change_state');
             // No marcar como ready aquí, dejar que handleReady lo haga
             // Solo si handleReady no se ha ejecutado aún
             if (!this.readyHandled) {
@@ -272,9 +298,21 @@ class WhatsAppService {
         }
         else if (state === 'DISCONNECTED' || state === 'UNPAIRED' || state === 'CONFLICT') {
             console.log(`❌ Estado crítico: ${state} - Cliente no disponible`);
+            if (state === 'CONFLICT') {
+                console.log('⚠️ CONFLICT: Otra sesión de WhatsApp Web está activa. Cierra otras sesiones.');
+            }
+            else if (state === 'UNPAIRED') {
+                console.log('⚠️ UNPAIRED: La sesión fue cerrada desde el teléfono. Necesitas escanear QR nuevamente.');
+            }
             this.isReady = false;
             this.isAuthenticated = false;
             this.readyHandled = false;
+        }
+        else if (state === 'OPENING') {
+            console.log('🔄 Estado: OPENING - Abriendo conexión...');
+        }
+        else if (state === 'PAIRING') {
+            console.log('🔐 Estado: PAIRING - Emparejando dispositivo...');
         }
     }
     handleLoadingScreen(percent, message) {
