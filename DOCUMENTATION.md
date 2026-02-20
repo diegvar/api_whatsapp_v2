@@ -10,10 +10,11 @@ API REST para enviar mensajes de WhatsApp utilizando whatsapp-web.js. Esta API p
 - Cuenta de WhatsApp activa
 
 ## Versiones de Paquetes Principales
-- **whatsapp-web.js**: ^1.34.4 (última versión estable)
-- **puppeteer**: ^24.36.1 (última versión estable)
+- **whatsapp-web.js**: 1.34.6 (versión fijada)
+- **puppeteer**: ^24.36.1 (compatible con whatsapp-web.js ^24.31.0)
 - **express**: ^4.22.1
 - **typescript**: ^5.7.3
+- **Node.js**: >=18.0.0 (requerido en `package.json` engines)
 
 ## Instalación
 
