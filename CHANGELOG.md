@@ -1,5 +1,45 @@
 # Changelog
 
+## [Actualización de Paquetes] - 2026-06-14
+
+### 📦 Paquetes Actualizados
+
+#### Dependencias Principales
+- **whatsapp-web.js**: `1.34.6` → `1.34.7` ⬆️
+  - Última versión estable
+  - Eliminada opción deprecada `restartOnAuthFail`
+
+- **puppeteer**: `24.36.1` → `24.43.1` ⬆️
+  - Correcciones de seguridad y compatibilidad con Chrome reciente
+
+- **express**: `4.22.1` → `4.22.2` ⬆️
+  - Parches de seguridad en dependencias transitivas
+
+- **dotenv**: `16.4.7` → `16.6.1` ⬆️
+- **qrcode**: `1.5.3` → `1.5.4` ⬆️
+
+#### Dependencias de Desarrollo
+- **@types/cors**: `2.8.17` → `2.8.19` ⬆️
+- **@types/node**: `20.19.30` → `20.19.43` ⬆️
+- **typescript**: `5.7.3` → `5.9.3` ⬆️
+
+### 🔧 Cambios en el Código
+- **webVersionCache**: actualizado de `2.2413.54` a `2.3000.1041431076-alpha` (versión estable de junio 2026)
+- **Página QR** (`public/index.html`): corregida para verificar `/qr.png` sin requerir token de autenticación
+- **Nueva ruta pública**: `GET /qr-status` (sin autenticación, para la página de escaneo)
+
+### 🔒 Seguridad
+- ✅ 0 vulnerabilidades tras `npm audit fix`
+
+### ⚠️ Notas Importantes
+- **Express 5.x**, **TypeScript 6.x**, **dotenv 17.x** y **@types/node 25.x** no se actualizaron para evitar cambios mayores
+
+### ✅ Verificación
+- ✅ Compilación TypeScript exitosa
+- ✅ Dependencias instaladas correctamente
+
+---
+
 ## [Actualización de Paquetes] - 2026-01-28
 
 ### 📦 Paquetes Actualizados

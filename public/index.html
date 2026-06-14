@@ -60,30 +60,27 @@
 
     <script>
         function checkQR() {
-            fetch('/api/qr-status')
-                .then(response => response.json())
-                .then(data => {
-                    const qrImage = document.getElementById('qr-image');
-                    const status = document.getElementById('status');
-                    
-                    if (data.hasQR) {
-                        qrImage.style.display = 'block';
-                        status.textContent = 'Escanea el código QR con WhatsApp';
-                        status.className = 'status waiting';
-                    } else {
-                        qrImage.style.display = 'none';
-                        status.textContent = 'WhatsApp Web conectado';
-                        status.className = 'status connected';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
+            const qrImage = document.getElementById('qr-image');
+            const status = document.getElementById('status');
+            const testImage = new Image();
+
+            testImage.onload = function() {
+                qrImage.src = '/qr.png?' + Date.now();
+                qrImage.style.display = 'block';
+                status.textContent = 'Escanea el código QR con WhatsApp';
+                status.className = 'status waiting';
+            };
+
+            testImage.onerror = function() {
+                qrImage.style.display = 'none';
+                status.textContent = 'WhatsApp Web conectado';
+                status.className = 'status connected';
+            };
+
+            testImage.src = '/qr.png?' + Date.now();
         }
 
-        // Verificar el estado cada 2 segundos
         setInterval(checkQR, 2000);
-        // Verificar inmediatamente al cargar la página
         checkQR();
     </script>
 </body>

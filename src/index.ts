@@ -34,6 +34,9 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Ruta pública para verificar estado del QR (sin autenticación)
+app.get('/qr-status', (req, res) => whatsappController.getQRStatus(req, res));
+
 // Rutas de API (con autenticación)
 app.post('/api/send-message', verifyToken, (req, res) => whatsappController.sendMessage(req, res));
 app.get('/api/status', verifyToken, (req, res) => whatsappController.getStatus(req, res));

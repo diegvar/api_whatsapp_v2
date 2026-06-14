@@ -36,6 +36,11 @@ export class WhatsAppService {
                 clientId: "whatsapp-client",
                 dataPath: authDir
             }),
+            webVersion: '2.3000.1041431076-alpha',
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+            },
             puppeteer: {
                 args: [
                     '--no-sandbox',
@@ -54,12 +59,7 @@ export class WhatsAppService {
                 headless: true,
                 timeout: 120000
             },
-            webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2413.54.html',
-            },
-            restartOnAuthFail: false, // Deshabilitado para evitar reinicios innecesarios
-            takeoverOnConflict: false, // Deshabilitado para evitar conflictos
+            takeoverOnConflict: false,
             takeoverTimeoutMs: 60000,
             qrMaxRetries: 10,
             authTimeoutMs: 600000
