@@ -1,5 +1,18 @@
 # Changelog
 
+## [Fix id._serialized → $1] - 2026-07-30
+
+### 🐛 Correcciones
+- **TypeError: Cannot read properties of undefined (reading 'id')**: WhatsApp Web (julio 2026) renombró `id._serialized` a `id.$1`; `sendMessage` devolvía respuesta vacía
+- `whatsapp-web.js` fijado al fix del [PR #201832](https://github.com/wwebjs/whatsapp-web.js/pull/201832) (aún no publicado en npm 1.34.7)
+- Uso de `waitUntilMsgSent: true` y lectura segura del id (`_serialized` o `$1`)
+- Clasificación de errores más precisa (ya no trata respuesta vacía como "cliente no inicializado")
+
+### ⚠️ Notas
+- Cuando salga una release oficial de `whatsapp-web.js` con este fix, se puede volver a la versión de npm
+
+---
+
 ## [Fix Protocol Timeout] - 2026-07-30
 
 ### 🐛 Correcciones

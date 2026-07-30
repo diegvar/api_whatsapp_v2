@@ -496,13 +496,25 @@ class WhatsAppService {
                 }
                 // Esperar un momento adicional para asegurar que todo esté sincronizado
                 await this.waitForClient(2000);
-                // Intentar enviar el mensaje
-                const response = await this.client.sendMessage(chatId, message);
+                // waitUntilMsgSent evita respuesta vacía en versiones recientes de WhatsApp Web
+                const response = await this.client.sendMessage(chatId, message, {
+                    waitUntilMsgSent: true
+                });
+                if (!response) {
+                    throw new Error('sendMessage devolvió respuesta vacía');
+                }
+                // WhatsApp Web (jul 2026) renombró id._serialized a id.$1 en algunos builds
+                const messageId = response.id?._serialized ||
+                    response.id?.$1 ||
+                    undefined;
+                if (!messageId) {
+                    throw new Error('sendMessage no devolvió un id de mensaje válido');
+                }
                 return {
                     status: 200,
                     message: 'El mensaje se ha enviado con éxito',
                     data: {
-                        id: response.id._serialized,
+                        id: messageId,
                         timestamp: response.timestamp,
                         from: response.from,
                         to: response.to,
@@ -517,24 +529,35 @@ class WhatsAppService {
                     lastError.message.includes('protocolTimeout') ||
                     lastError.name === 'ProtocolError' ||
                     lastError.constructor?.name === 'ProtocolError';
-                // Manejar errores específicos relacionados con inicialización
-                if (lastError.message.includes('getChat') ||
-                    lastError.message.includes('Cannot read properties of undefined') ||
+                const isEmptyResponse = lastError.message.includes('respuesta vacía') ||
+                    lastError.message.includes('id de mensaje válido') ||
+                    (lastError.message.includes("reading 'id'") &&
+                        lastError.message.includes('undefined'));
+                const isClientInitError = lastError.message.includes('getChat') ||
+                    lastError.message.includes('sendSeen') ||
                     lastError.message.includes('no está completamente inicializado') ||
                     lastError.message.includes('no tiene acceso') ||
-                    isProtocolTimeout) {
+                    lastError.message.includes('no tiene información válida') ||
+                    lastError.message.includes('no tiene acceso a Puppeteer');
+                if (isClientInitError || isProtocolTimeout || isEmptyResponse) {
                     console.error(isProtocolTimeout
                         ? 'Error: Timeout de protocolo Puppeteer (Chrome/WhatsApp Web no respondió a tiempo)'
-                        : 'Error: El cliente no está completamente inicializado');
+                        : isEmptyResponse
+                            ? 'Error: sendMessage no devolvió un mensaje válido (posible incompatibilidad WhatsApp Web)'
+                            : 'Error: El cliente no está completamente inicializado');
                     if (attempt === maxRetries) {
                         return {
                             status: 503,
                             message: isProtocolTimeout
                                 ? 'WhatsApp Web tardó demasiado en responder. Espera unos segundos e intenta de nuevo. Si persiste, reinicia con POST /api/restart.'
-                                : 'Cliente de WhatsApp no está completamente sincronizado. Por favor, espera unos segundos y vuelve a intentar, o verifica el estado con /api/status.',
+                                : isEmptyResponse
+                                    ? 'El mensaje no se pudo confirmar. Espera unos segundos e intenta de nuevo, o reinicia con POST /api/restart.'
+                                    : 'Cliente de WhatsApp no está completamente sincronizado. Por favor, espera unos segundos y vuelve a intentar, o verifica el estado con /api/status.',
                             error: isProtocolTimeout
                                 ? 'Protocol timeout - Chrome/WhatsApp Web no respondió'
-                                : 'Cliente no completamente sincronizado - intenta de nuevo en unos segundos'
+                                : isEmptyResponse
+                                    ? 'Respuesta vacía de sendMessage'
+                                    : 'Cliente no completamente sincronizado - intenta de nuevo en unos segundos'
                         };
                     }
                     console.log(`Esperando ${5000 * attempt}ms antes del siguiente intento...`);
