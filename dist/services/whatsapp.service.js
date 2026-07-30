@@ -64,7 +64,7 @@ class WhatsAppService {
                 clientId: "whatsapp-client",
                 dataPath: authDir
             }),
-            webVersion: '2.3000.1041431076-alpha',
+            webVersion: '2.3000.1044177046-alpha',
             webVersionCache: {
                 type: 'remote',
                 remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
@@ -82,10 +82,12 @@ class WhatsAppService {
                     '--disable-features=VizDisplayCompositor',
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding'
+                    '--disable-renderer-backgrounding',
+                    '--js-flags=--max-old-space-size=512'
                 ],
                 headless: true,
-                timeout: 120000
+                timeout: 180000,
+                protocolTimeout: 180000
             },
             takeoverOnConflict: false,
             takeoverTimeoutMs: 60000,
@@ -511,25 +513,32 @@ class WhatsAppService {
             catch (error) {
                 lastError = error;
                 console.error(`Error al enviar mensaje (intento ${attempt}/${maxRetries}):`, error);
+                const isProtocolTimeout = lastError.message.includes('Runtime.callFunctionOn timed out') ||
+                    lastError.message.includes('protocolTimeout') ||
+                    lastError.name === 'ProtocolError' ||
+                    lastError.constructor?.name === 'ProtocolError';
                 // Manejar errores específicos relacionados con inicialización
                 if (lastError.message.includes('getChat') ||
                     lastError.message.includes('Cannot read properties of undefined') ||
                     lastError.message.includes('no está completamente inicializado') ||
-                    lastError.message.includes('no tiene acceso')) {
-                    console.error('Error: El cliente no está completamente inicializado');
-                    // NO cambiar isReady a false aquí para evitar desconexión innecesaria
-                    // Solo marcar como no listo temporalmente
+                    lastError.message.includes('no tiene acceso') ||
+                    isProtocolTimeout) {
+                    console.error(isProtocolTimeout
+                        ? 'Error: Timeout de protocolo Puppeteer (Chrome/WhatsApp Web no respondió a tiempo)'
+                        : 'Error: El cliente no está completamente inicializado');
                     if (attempt === maxRetries) {
-                        // No desconectar, solo reportar el error
                         return {
                             status: 503,
-                            message: 'Cliente de WhatsApp no está completamente sincronizado. Por favor, espera unos segundos y vuelve a intentar, o verifica el estado con /api/status.',
-                            error: 'Cliente no completamente sincronizado - intenta de nuevo en unos segundos'
+                            message: isProtocolTimeout
+                                ? 'WhatsApp Web tardó demasiado en responder. Espera unos segundos e intenta de nuevo. Si persiste, reinicia con POST /api/restart.'
+                                : 'Cliente de WhatsApp no está completamente sincronizado. Por favor, espera unos segundos y vuelve a intentar, o verifica el estado con /api/status.',
+                            error: isProtocolTimeout
+                                ? 'Protocol timeout - Chrome/WhatsApp Web no respondió'
+                                : 'Cliente no completamente sincronizado - intenta de nuevo en unos segundos'
                         };
                     }
-                    // Esperar más tiempo antes del siguiente intento para dar tiempo a sincronizar
-                    console.log(`Esperando ${5000 * attempt}ms antes del siguiente intento para permitir sincronización...`);
-                    await this.waitForClient(5000 * attempt); // Espera progresiva
+                    console.log(`Esperando ${5000 * attempt}ms antes del siguiente intento...`);
+                    await this.waitForClient(5000 * attempt);
                     continue;
                 }
                 // Si es el último intento, manejar el error

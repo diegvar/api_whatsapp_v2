@@ -1,5 +1,19 @@
 # Changelog
 
+## [Fix Protocol Timeout] - 2026-07-30
+
+### 🐛 Correcciones
+- **ProtocolError / Runtime.callFunctionOn timed out**: al enviar mensajes, Puppeteer agotaba el timeout de protocolo aunque el cliente figurara como listo
+- `protocolTimeout` y `timeout` de Puppeteer aumentados a **180s**
+- Manejo específico de timeouts de protocolo con reintentos y respuesta HTTP **503** más clara
+- `webVersion` actualizado a `2.3000.1044177046-alpha` (última disponible en wa-version)
+
+### ⚠️ Notas
+- Si el VPS está lento o Chrome saturado, el timeout puede seguir ocurriendo: reiniciar con `POST /api/restart` o `pm2 restart whatsapp-api`
+- `whatsapp-web.js` ya está en la última estable (**1.34.7**); no hay versión nueva que instalar
+
+---
+
 ## [Actualización de Paquetes] - 2026-06-14
 
 ### 📦 Paquetes Actualizados
