@@ -43,6 +43,10 @@ class WhatsAppService {
         this.isReady = false;
         this.isAuthenticated = false;
         this.readyHandled = false; // Prevenir múltiples manejos del evento ready
+        this.healthCheckTimer = null;
+        this.isRestarting = false;
+        this.isHealthChecking = false;
+        this.HEALTH_CHECK_INTERVAL_MS = 2 * 60 * 1000; // cada 2 minutos
         this.publicDir = path.join(__dirname, '../../public');
         this.ensurePublicDir();
         this.initializeClient();
@@ -237,6 +241,7 @@ class WhatsAppService {
                 this.isAuthenticated = true;
                 console.log('✅ Cliente completamente sincronizado y listo para usar');
                 console.log('🔄 Reautenticación completada automáticamente');
+                this.startFrameHealthCheck();
             }
             else {
                 console.warn('⚠️ Cliente dijo estar listo pero hay QR disponible - esperando...');
@@ -279,6 +284,7 @@ class WhatsAppService {
             hasInfo: !!(this.client?.info),
             hasWid: !!(this.client?.info?.wid)
         });
+        this.stopFrameHealthCheck();
         this.isReady = false;
         this.isAuthenticated = false;
         this.readyHandled = false; // Resetear para permitir nuevo manejo de ready
@@ -348,6 +354,7 @@ class WhatsAppService {
                             this.isAuthenticated = true;
                             this.readyHandled = true;
                             console.log('✅ Cliente marcado como listo desde change_state');
+                            this.startFrameHealthCheck();
                         }
                     }
                 }, 2000);
@@ -361,6 +368,7 @@ class WhatsAppService {
             else if (state === 'UNPAIRED') {
                 console.log('⚠️ UNPAIRED: La sesión fue cerrada desde el teléfono. Necesitas escanear QR nuevamente.');
             }
+            this.stopFrameHealthCheck();
             this.isReady = false;
             this.isAuthenticated = false;
             this.readyHandled = false;
@@ -669,6 +677,72 @@ class WhatsAppService {
     async waitForClient(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+    startFrameHealthCheck() {
+        this.stopFrameHealthCheck();
+        console.log(`🩺 Health check de frame activo (cada ${this.HEALTH_CHECK_INTERVAL_MS / 1000}s)`);
+        this.healthCheckTimer = setInterval(() => {
+            void this.runFrameHealthCheck();
+        }, this.HEALTH_CHECK_INTERVAL_MS);
+        // Evitar que el timer mantenga el proceso vivo innecesariamente en tests
+        if (typeof this.healthCheckTimer.unref === 'function') {
+            this.healthCheckTimer.unref();
+        }
+    }
+    stopFrameHealthCheck() {
+        if (this.healthCheckTimer) {
+            clearInterval(this.healthCheckTimer);
+            this.healthCheckTimer = null;
+        }
+    }
+    async isPuppeteerFrameAlive() {
+        try {
+            if (!this.client?.pupPage) {
+                return false;
+            }
+            const result = await this.client.pupPage.evaluate(() => {
+                return typeof globalThis.WWebJS !== 'undefined';
+            });
+            return result === true;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.includes('detached Frame') ||
+                message.includes('Execution context was destroyed') ||
+                message.includes('Target closed') ||
+                message.includes('Session closed') ||
+                message.includes('Protocol error')) {
+                console.warn('🩺 Health check: frame/contexto de Puppeteer no saludable:', message);
+                return false;
+            }
+            console.warn('🩺 Health check: error inesperado al evaluar frame:', message);
+            return false;
+        }
+    }
+    async runFrameHealthCheck() {
+        if (this.isRestarting || this.isHealthChecking) {
+            return;
+        }
+        if (!this.isReady || !this.isAuthenticated) {
+            return;
+        }
+        this.isHealthChecking = true;
+        try {
+            const alive = await this.isPuppeteerFrameAlive();
+            if (!alive) {
+                console.error('🩺 Health check falló: frame desconectado. Reiniciando cliente automáticamente...');
+                this.isReady = false;
+                this.isAuthenticated = false;
+                this.readyHandled = false;
+                await this.restartClient();
+            }
+        }
+        catch (error) {
+            console.error('🩺 Error en health check de frame:', error);
+        }
+        finally {
+            this.isHealthChecking = false;
+        }
+    }
     getStatus() {
         const isReady = this.isClientFullyReady();
         return {
@@ -682,13 +756,24 @@ class WhatsAppService {
         };
     }
     async restartClient() {
+        if (this.isRestarting) {
+            console.log('🔄 Reinicio ya en curso, se omite llamada duplicada');
+            return;
+        }
+        this.isRestarting = true;
         try {
             console.log('🔄 Reiniciando cliente de WhatsApp...');
+            this.stopFrameHealthCheck();
             this.isReady = false;
             this.isAuthenticated = false;
             this.readyHandled = false; // Resetear flag de ready
             if (this.client) {
-                await this.client.destroy();
+                try {
+                    await this.client.destroy();
+                }
+                catch (destroyError) {
+                    console.warn('⚠️ Error al destruir cliente (continuando reinicio):', destroyError);
+                }
             }
             // Esperar un momento antes de reinicializar
             await this.waitForClient(2000);
@@ -699,6 +784,9 @@ class WhatsAppService {
             this.isReady = false;
             this.isAuthenticated = false;
             this.readyHandled = false;
+        }
+        finally {
+            this.isRestarting = false;
         }
     }
 }

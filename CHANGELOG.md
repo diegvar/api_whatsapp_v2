@@ -1,5 +1,17 @@
 # Changelog
 
+## [Health check de frame] - 2026-08-01
+
+### ✨ Nuevas Características
+- Monitoreo periódico cada **2 minutos** del frame de Puppeteer (`page.evaluate` liviano)
+- Si detecta `detached Frame` / contexto destruido en idle, reinicia el cliente automáticamente (sin esperar un envío)
+
+### 🐛 Correcciones
+- Reinicio ante `detached Frame` también al enviar mensajes (ya incluido)
+- Flags de Puppeteer para mayor estabilidad de frame en sesiones largas
+
+---
+
 ## [Fix id._serialized → $1] - 2026-07-30
 
 ### 🐛 Correcciones
