@@ -79,11 +79,13 @@ class WhatsAppService {
                     '--no-zygote',
                     '--disable-gpu',
                     '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
+                    '--disable-features=IsolateOrigins,site-per-process,VizDisplayCompositor',
+                    '--disable-site-isolation-trials',
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
-                    '--js-flags=--max-old-space-size=512'
+                    '--js-flags=--max-old-space-size=512',
+                    '--memory-pressure-off'
                 ],
                 headless: true,
                 timeout: 180000,
@@ -529,6 +531,10 @@ class WhatsAppService {
                     lastError.message.includes('protocolTimeout') ||
                     lastError.name === 'ProtocolError' ||
                     lastError.constructor?.name === 'ProtocolError';
+                const isDetachedFrame = lastError.message.includes('detached Frame') ||
+                    lastError.message.includes('Execution context was destroyed') ||
+                    lastError.message.includes('Target closed') ||
+                    lastError.message.includes('Session closed');
                 const isEmptyResponse = lastError.message.includes('respuesta vacía') ||
                     lastError.message.includes('id de mensaje válido') ||
                     (lastError.message.includes("reading 'id'") &&
@@ -539,6 +545,24 @@ class WhatsAppService {
                     lastError.message.includes('no tiene acceso') ||
                     lastError.message.includes('no tiene información válida') ||
                     lastError.message.includes('no tiene acceso a Puppeteer');
+                // Frame/contexto de Puppeteer muerto: reiniciar cliente (reintentar no alcanza)
+                if (isDetachedFrame) {
+                    console.error('Error: Frame/contexto de Chrome desconectado. Reiniciando cliente...');
+                    this.isReady = false;
+                    this.isAuthenticated = false;
+                    this.readyHandled = false;
+                    try {
+                        await this.restartClient();
+                    }
+                    catch (restartError) {
+                        console.error('Error al reiniciar tras detached Frame:', restartError);
+                    }
+                    return {
+                        status: 503,
+                        message: 'La sesión de WhatsApp Web se desconectó internamente. El cliente se está reiniciando; espera 30-60s y vuelve a intentar.',
+                        error: 'detached Frame / contexto destruido - reinicio en curso'
+                    };
+                }
                 if (isClientInitError || isProtocolTimeout || isEmptyResponse) {
                     console.error(isProtocolTimeout
                         ? 'Error: Timeout de protocolo Puppeteer (Chrome/WhatsApp Web no respondió a tiempo)'
